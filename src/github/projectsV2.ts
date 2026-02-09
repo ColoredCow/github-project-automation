@@ -157,10 +157,14 @@ async function loadProjectContext(octokit: any, config: AutomationConfig): Promi
         ... on ProjectV2 {
           fields(first: 50, after: $cursor) {
             nodes {
-              id
-              name
-              dataType
-              ... on ProjectV2SingleSelectField { options { id name } }
+              ... on ProjectV2FieldCommon {
+                id
+                name
+                dataType
+              }
+              ... on ProjectV2SingleSelectField {
+                options { id name }
+              }
             }
             pageInfo { hasNextPage endCursor }
           }
