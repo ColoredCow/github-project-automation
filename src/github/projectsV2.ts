@@ -20,27 +20,58 @@ async function graphql<T>(octokit: any, query: string, variables: Record<string,
   return withRetry(() => graphqlClient<T>(query, variables), "graphql");
 }
 
+function isOwnerResolutionError(error: unknown, owner: string, kind: "Organization" | "User"): boolean {
+  if (!error || typeof error !== "object") return false;
+  const message = (error as { message?: string }).message || "";
+  return message.includes(`Could not resolve to a ${kind} with the login of '${owner}'`);
+}
+
+async function safeGraphql<T>(
+  octokit: any,
+  query: string,
+  variables: Record<string, any>,
+  owner: string,
+  kind: "Organization" | "User"
+): Promise<T | null> {
+  try {
+    return await graphql<T>(octokit, query, variables);
+  } catch (error) {
+    if (isOwnerResolutionError(error, owner, kind)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 async function findProjectByNumber(
   octokit: any,
   owner: string,
   number: number
 ): Promise<{ id: string; title: string } | null> {
-  const query = `
+  const orgQuery = `
     query($owner: String!, $number: Int!) {
       organization(login: $owner) {
         projectV2(number: $number) { id title }
       }
+    }
+  `;
+
+  const userQuery = `
+    query($owner: String!, $number: Int!) {
       user(login: $owner) {
         projectV2(number: $number) { id title }
       }
     }
   `;
 
-  const result = await graphql<any>(octokit, query, { owner, number });
-  const orgProject = result.organization?.projectV2;
-  if (orgProject) return orgProject;
-  const userProject = result.user?.projectV2;
+  const userResult = await safeGraphql<any>(octokit, userQuery, { owner, number }, owner, "User");
+  const userProject = userResult?.user?.projectV2;
   if (userProject) return userProject;
+
+  const orgResult = await safeGraphql<any>(octokit, orgQuery, { owner, number }, owner, "Organization");
+  const orgProject = orgResult?.organization?.projectV2;
+  if (orgProject) return orgProject;
+
   return null;
 }
 
@@ -91,11 +122,15 @@ async function findProjectByName(
     return null;
   };
 
-  const orgResult = await search(orgQuery, "organization");
-  if (orgResult) return orgResult;
-
-  const userResult = await search(userQuery, "user");
+  const userResult = await safeGraphql<any>(octokit, userQuery, { owner, cursor: null, search: name }, owner, "User")
+    ? await search(userQuery, "user")
+    : null;
   if (userResult) return userResult;
+
+  const orgResult = await safeGraphql<any>(octokit, orgQuery, { owner, cursor: null, search: name }, owner, "Organization")
+    ? await search(orgQuery, "organization")
+    : null;
+  if (orgResult) return orgResult;
 
   return null;
 }
