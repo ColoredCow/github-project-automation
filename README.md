@@ -139,7 +139,7 @@ Grant installation to both repos and add:
 - Projects: read/write
 
 ## Build and bundle
-This action is bundled via `esbuild` and committed to `dist/index.js`.
+This action is bundled via `esbuild` (CJS output) and committed to `dist/index.js`.
 Runtime: Node.js 24 (set in `action.yml`).
 
 ```bash
